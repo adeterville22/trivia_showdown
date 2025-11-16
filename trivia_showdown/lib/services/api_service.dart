@@ -1,8 +1,25 @@
 import 'dart:convert';
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  static const String baseUrl = 'http://localhost:4000/api';
+  static String get baseUrl {
+    if (kIsWeb) {
+      return ''; // Web calls the same domain automatically
+    }
+
+    if (Platform.isAndroid) {
+      return 'http://10.0.2.2:4000/api'; // Android emulator
+    }
+
+    if (Platform.isIOS) {
+      return 'http://localhost:4000/api'; // iOS Simulator
+    }
+
+    // For real devices (Android/iOS)
+    return 'http://192.168.1.50:4000/api'; // <--- CHANGE this to your Mac WiFi IP
+  }
   
   // Create new game session
   static Future<Map<String, dynamic>> createGameSession({
@@ -71,6 +88,39 @@ class ApiService {
       return List<String>.from(data['data']);
     } else {
       throw Exception('Failed to get categories: ${response.statusCode}');
+    }
+  }
+
+  // NEW: Get global leaderboard
+  static Future<Map<String, dynamic>> getGlobalLeaderboard() async {
+    final response = await http.get(Uri.parse('$baseUrl/games/leaderboard/global'));
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception('Failed to get global leaderboard: ${response.statusCode}');
+    }
+  }
+
+  // NEW: Get session-specific leaderboard
+  static Future<Map<String, dynamic>> getSessionLeaderboard(String sessionId) async {
+    final response = await http.get(Uri.parse('$baseUrl/games/leaderboard/session/$sessionId'));
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception('Failed to get session leaderboard: ${response.statusCode}');
+    }
+  }
+
+  // NEW: Get recent sessions leaderboard
+  static Future<Map<String, dynamic>> getRecentSessionsLeaderboard({int limit = 10}) async {
+    final response = await http.get(Uri.parse('$baseUrl/games/leaderboard/recent?limit=$limit'));
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception('Failed to get recent sessions leaderboard: ${response.statusCode}');
     }
   }
 }

@@ -364,7 +364,135 @@ const getGameResults = async (req, res) => {
     });
   }
 };
+// @desc    Get global leaderboard with all players and their scores
+// @route   GET /api/games/leaderboard/global
+// @access  Public
+const getGlobalLeaderboard = async (req, res) => {
+  try {
+    // Aggregate all players from all completed game sessions
+    const leaderboardData = await GameSession.aggregate([
+      { $match: { status: 'completed' } }, // Only completed games
+      { $unwind: '$players' }, // Deconstruct the players array
+      {
+        $group: {
+          _id: '$players.name',
+          totalScore: { $sum: '$players.score' },
+          gamesPlayed: { $sum: 1 },
+          bestScore: { $max: '$players.score' },
+          averageScore: { $avg: '$players.score' },
+          lastPlayed: { $max: '$completedAt' }
+        }
+      },
+      { 
+        $project: {
+          name: '$_id',
+          totalScore: 1,
+          gamesPlayed: 1,
+          bestScore: 1,
+          averageScore: { $round: ['$averageScore', 2] },
+          lastPlayed: 1,
+          _id: 0
+        }
+      },
+      { $sort: { totalScore: -1 } }, // Sort by total score descending
+      { $limit: 100 } // Limit to top 100 players
+    ]);
 
+    res.json({
+      success: true,
+      data: {
+        leaderboard: leaderboardData,
+        totalPlayers: leaderboardData.length,
+        lastUpdated: new Date()
+      }
+    });
+  } catch (error) {
+    console.error('Error getting global leaderboard:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error getting global leaderboard',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Get session-specific leaderboard
+// @route   GET /api/games/leaderboard/session/:sessionId
+// @access  Public
+const getSessionLeaderboard = async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+
+    const gameSession = await GameSession.findOne({ sessionId });
+    
+    if (!gameSession) {
+      return res.status(404).json({
+        success: false,
+        message: 'Game session not found'
+      });
+    }
+
+    // Sort players by score for the session
+    const sortedPlayers = [...gameSession.players].sort((a, b) => b.score - a.score);
+
+    res.json({
+      success: true,
+      data: {
+        sessionId: gameSession.sessionId,
+        players: sortedPlayers,
+        totalQuestions: gameSession.totalQuestions,
+        status: gameSession.status,
+        completedAt: gameSession.completedAt
+      }
+    });
+  } catch (error) {
+    console.error('Error getting session leaderboard:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error getting session leaderboard',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Get recent sessions leaderboard
+// @route   GET /api/games/leaderboard/recent
+// @access  Public
+const getRecentSessionsLeaderboard = async (req, res) => {
+  try {
+    const { limit = 10 } = req.query;
+
+    const recentSessions = await GameSession.find({ 
+      status: 'completed' 
+    })
+    .sort({ completedAt: -1 })
+    .limit(parseInt(limit))
+    .select('sessionId players totalQuestions completedAt');
+
+    // Format the data to include session info with sorted players
+    const formattedSessions = recentSessions.map(session => ({
+      sessionId: session.sessionId,
+      completedAt: session.completedAt,
+      totalQuestions: session.totalQuestions,
+      players: session.players.sort((a, b) => b.score - a.score)
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        sessions: formattedSessions,
+        totalSessions: formattedSessions.length
+      }
+    });
+  } catch (error) {
+    console.error('Error getting recent sessions leaderboard:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error getting recent sessions leaderboard',
+      error: error.message
+    });
+  }
+};
 // Helper function to shuffle array
 function shuffleArray(array) {
   const shuffled = [...array];
@@ -379,5 +507,8 @@ module.exports = {
   createGameSession,
   submitAnswer,
   getGameState,
-  getGameResults
+  getGameResults,
+  getSessionLeaderboard,
+  getRecentSessionsLeaderboard,
+  getGlobalLeaderboard
 };
